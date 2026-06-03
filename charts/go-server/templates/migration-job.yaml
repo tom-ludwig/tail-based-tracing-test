@@ -1,0 +1,145 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "go-server.migrationName" . }}
+  labels:
+    {{- include "go-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    {{- with .Values.migrations.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if .Values.migrations.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ .Values.migrations.ttlSecondsAfterFinished }}
+  {{- end }}
+  {{- if hasKey .Values.migrations "backoffLimit" }}
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  {{- else }}
+  backoffLimit: 3
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "go-server.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          # Use the sqldef image (psqldef is the entrypoint)
+          image: "{{ .Values.migrations.image.repository }}:{{ .Values.migrations.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          
+          # ConfigMap mounts schema.sql at /migrations/schema.sql
+          args:
+            - "--host=$(PG_HOST)"
+            - "--port=$(PG_PORT)"
+            - "--user=$(PG_USER)"
+            {{- if .Values.migrations.enableDrop }}
+            - "--config-inline=enable_drop: {{ .Values.migrations.enableDrop }}"
+            {{- end }}
+            {{- if .Values.migrations.createIndexConcurrently }}
+            - "--config-inline=create_index_concurrently: {{ .Values.migrations.createIndexConcurrently }}"
+            {{- end }}
+            - "--file=/migrations/schema.sql"
+            - "$(PG_DB)"
+            
+          env:
+            {{- include "go-server.envVars" . | nindent 12 }}
+            
+            {{- if .Values.env.PG_PASSWORD.secretKeyRef }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.env.PG_PASSWORD.secretKeyRef.name }}
+                  key: {{ .Values.env.PG_PASSWORD.secretKeyRef.key }}
+            {{- else if .Values.env.PG_PASSWORD.configMapKeyRef }}
+            - name: PGPASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.env.PG_PASSWORD.configMapKeyRef.name }}
+                  key: {{ .Values.env.PG_PASSWORD.configMapKeyRef.key }}
+            {{- else if .Values.env.PG_PASSWORD.value }}
+            - name: PGPASSWORD
+              value: {{ .Values.env.PG_PASSWORD.value | quote }}
+            {{- end }}
+
+            {{- if .Values.pgTLS.enabled }}
+            - name: PGSSLMODE
+              value: "{{ .Values.pgTLS.sslMode | default "verify-full" }}"
+            - name: PGSSLCERT
+              value: {{ .Values.pgTLS.mountPath }}/tls.crt
+            - name: PGSSLKEY
+              value: {{ .Values.pgTLS.mountPath }}/tls.key
+            - name: PGSSLROOTCERT
+              value: {{ .Values.pgTLS.mountPath }}/ca.crt
+            {{- else }}
+            - name: PGSSLMODE
+              value: "{{ .Values.pgTLS.sslMode | default "disable" }}"
+            {{- end }}
+
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+              readOnly: true
+            {{- if .Values.pgTLS.enabled }}
+            - name: pg-client-certs
+              mountPath: {{ .Values.pgTLS.mountPath }}
+              readOnly: true
+            {{- end }}
+      
+      volumes:
+        - name: migrations
+          configMap:
+            {{- if .Values.migrations.existingConfigMap }}
+            name: {{ .Values.migrations.existingConfigMap }}
+            {{- else }}
+            name: {{ include "go-server.fullname" . }}-migrations
+            {{- end }}
+        {{- if .Values.pgTLS.enabled }}
+        - name: pg-client-certs
+          projected:
+            defaultMode: 0600
+            sources:
+              {{- if .Values.pgTLS.clientSecret }}
+              - secret:
+                  name: {{ .Values.pgTLS.clientSecret }}
+                  items:
+                    - key: tls.crt
+                      path: tls.crt
+                    - key: tls.key
+                      path: tls.key
+              {{- end }}
+              {{- if .Values.pgTLS.caSecret }}
+              - secret:
+                  name: {{ .Values.pgTLS.caSecret }}
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

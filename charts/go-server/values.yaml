@@ -1,0 +1,216 @@
+# Default values for go-server
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/tom-ludwig/go-server-template
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+livenessProbe:
+  httpGet:
+    path: /livez
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# =============================================================================
+# Environment Configuration
+# =============================================================================
+# Supports three patterns:
+#   1. Direct value:      { value: "something" }
+#   2. Secret reference:  { secretKeyRef: { name: "secret-name", key: "key-name" } }
+#   3. ConfigMap ref:     { configMapKeyRef: { name: "cm-name", key: "key-name" } }
+#
+# Example with CNPG-generated secrets:
+#   PG_HOST:
+#     secretKeyRef:
+#       name: my-cluster-app
+#       key: host
+# =============================================================================
+
+env:
+  # Server configuration
+  PORT:
+    value: "8080"
+  LOG_LEVEL:
+    value: "INFO"
+
+  # Database configuration
+  # For production: Use secretKeyRef to reference CNPG-generated secrets
+  # The CNPG operator creates a secret named "<cluster-name>-app" with these keys:
+  #   host, port, dbname, username, password, uri, jdbc-uri
+  PG_HOST:
+    value: "localhost"
+    # secretKeyRef:
+    #   name: cluster-example-app
+    #   key: host
+  PG_PORT:
+    value: "5432"
+    # secretKeyRef:
+    #   name: cluster-example-app
+    #   key: port
+  PG_DB:
+    value: "app"
+    # secretKeyRef:
+    #   name: cluster-example-app
+    #   key: dbname
+  PG_USER:
+    value: "app"
+    # secretKeyRef:
+    #   name: cluster-example-app
+    #   key: username
+  PG_PASSWORD:
+    value: ""
+    # secretKeyRef:
+    #   name: cluster-example-app
+    #   key: password
+  PG_SSLMODE:
+    value: "verify-full"
+  PG_LOCAL:
+    value: "false"
+
+  # CORS configuration
+  CORS_ALLOWED_ORIGINS:
+    value: "*"
+  CORS_ALLOW_CREDENTIALS:
+    value: "true"
+
+  # OIDC configuration
+  OIDC_ENABLED:
+    value: "false"
+  OIDC_ISSUER:
+    value: ""
+  OIDC_AUDIENCE:
+    value: ""
+
+# Additional environment variables (merged with env above)
+extraEnv: []
+# - name: CUSTOM_VAR
+#   value: "custom-value"
+# - name: SECRET_VAR
+#   valueFrom:
+#     secretKeyRef:
+#       name: my-secret
+#       key: my-key
+
+# =============================================================================
+# TLS/SSL Certificates for PostgreSQL
+# =============================================================================
+# Mount certificates from CNPG secrets for mTLS connections.
+# Required for production deployments with SSL enabled.
+# For local development, set enabled: false and use PG_SSLMODE: "disable"
+# =============================================================================
+pgTLS:
+  enabled: false
+  # Secret containing client certificates (created by CNPG)
+  clientSecret: ""
+  # Secret containing CA certificate (created by CNPG)
+  caSecret: ""
+  # Mount path for certificates
+  mountPath: /certs
+
+# =============================================================================
+# Database Migrations
+# =============================================================================
+# Uses psqldef for declarative schema migrations.
+# By default, reads schema.sql from charts/go-server/migrations/ directory
+# (symlinked to the repo's migrations/ folder).
+migrations:
+  enabled: true
+
+  # Migration image (psqldef from sqldef project)
+  image:
+    repository: docker.io/sqldef/psqldef
+    tag: latest
+
+  # Schema file path relative to chart root (defaults to migrations/schema.sql)
+  # This file will be mounted at /migrations/schema.sql in the migration job
+  schemaFile: migrations/schema.sql
+
+  # Optional: Define schema content inline (overrides schemaFile)
+  schema: ""
+  # schema: |
+  #   CREATE TABLE users (...);
+
+  # Optional: Use an existing ConfigMap (overrides both schemaFile and schema)
+  existingConfigMap: ""
+
+  # psqldef configuration options
+  # enableDrop: Enable destructive changes (DROP statements). Use with caution.
+  enableDrop: false
+  # createIndexConcurrently: Add CONCURRENTLY to CREATE INDEX statements to avoid table locking.
+  # Recommended for production environments.
+  createIndexConcurrently: true
+
+  # Resources for migration job
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+
+  # Backoff limit for failed migrations
+  # Set to 0 to disable retries (job fails immediately on first failure)
+  # Set to 1+ to allow that many retry attempts
+  backoffLimit: 3
+
+  # TTL for completed jobs (seconds) - auto-cleanup
+  # Set to 0 to keep jobs indefinitely, or specify seconds (e.g., 3600 = 1 hour)
+  # Default: 3600 (1 hour) - allows time to check logs of both successful and failed jobs
+  ttlSecondsAfterFinished: 3600
+
+  # Additional annotations for the migration job
+  annotations: {}
