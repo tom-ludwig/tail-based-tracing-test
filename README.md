@@ -3,8 +3,9 @@
 A test for tail based tracing.
 This go service was just to test if our tail based tracing with multiple Otel-Collector works correctly, along with the traces to logs configuration.
 
-The collector setup in [`otel-collector-config/`](./otel-collector-config/) is two-tiered: apps send OTLP to **`otel-lb`**, which hashes by traceID and forwards to **`otel-tail-sampler`** (StatefulSet, headless service) so all spans of a trace land on the same pod for tail sampling, then export to VictoriaTraces.
+<img width="489" height="284" alt="image" src="https://github.com/user-attachments/assets/db72fa6c-ee9c-4ed0-a5f6-fa894ab4b99d" />
 
+## Go-Service
 Use the following endpoints to test if the collector is configured correctly.
 
 - `/success` endpoint will just return a 200; only the configured sample amount (e.g. 1% => 1 out of 100 request) should be recorded
@@ -13,6 +14,12 @@ Use the following endpoints to test if the collector is configured correctly.
 
 This repository is based on the go-server-template. Note that much of this code is still bloat from the template. This example runs without an DB connection.
 The documentation below is from the template and was not changed.
+
+## OTel Collector Config
+The collector setup in [`otel-collector-config/`](./otel-collector-config/) is two-tiered: apps send OTLP to **`otel-lb`**, which hashes by traceID and forwards to **`otel-tail-sampler`** (StatefulSet, headless service) so all spans of a trace land on the same pod for tail sampling, then export to VictoriaTraces.
+
+<img width="2864" height="1524" alt="image" src="https://github.com/user-attachments/assets/39454a80-19ac-448b-bf04-b0f638352f14" />
+<img width="3168" height="1364" alt="image" src="https://github.com/user-attachments/assets/4577c1e1-6c83-408b-8f26-c704ef97d0d8" />
 
 ---
 
