@@ -30,7 +30,7 @@ type ShutdownFunc func(context.Context) error
 //
 // Honors the standard OpenTelemetry env vars:
 //   - OTEL_EXPORTER_OTLP_ENDPOINT  (e.g. otel-collector:4317, or
-//                                   http://victoriatraces:10428/insert/opentelemetry/v1/traces)
+//     http://victoriatraces:10428/insert/opentelemetry/v1/traces)
 //   - OTEL_EXPORTER_OTLP_PROTOCOL  ("grpc" (default) or "http/protobuf")
 //   - OTEL_EXPORTER_OTLP_HEADERS   (e.g. authorization=Bearer ...)
 //   - OTEL_EXPORTER_OTLP_INSECURE  (true to disable TLS — gRPC only)
@@ -109,10 +109,10 @@ func isInsecure() bool {
 //
 //   - "grpc"          → otlptracegrpc, endpoint as host:port (scheme stripped).
 //   - "http/protobuf" → otlptracehttp. If the endpoint includes a path
-//                       (e.g. VictoriaTraces' /insert/opentelemetry/v1/traces)
-//                       we use WithEndpointURL so the SDK doesn't append
-//                       /v1/traces itself; otherwise WithEndpoint + the
-//                       default path.
+//     (e.g. VictoriaTraces' /insert/opentelemetry/v1/traces)
+//     we use WithEndpointURL so the SDK doesn't append
+//     /v1/traces itself; otherwise WithEndpoint + the
+//     default path.
 func newExporter(ctx context.Context, protocol, rawEndpoint string) (*otlptrace.Exporter, error) {
 	switch protocol {
 	case "grpc":

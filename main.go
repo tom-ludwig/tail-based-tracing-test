@@ -8,9 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/exaring/otelpgx"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
 	"com.tom-ludwig/go-server-template/internal/api/health"
@@ -95,10 +93,10 @@ func main() {
 	if cfg.LogLevel == slog.LevelDebug {
 		// Add swagger specs here when you create new OpenAPI files
 		swaggers := []*openapi3.T{}
-		if s, err := health.GetSwagger(); err == nil {
+		if s, err := health.GetSpec(); err == nil {
 			swaggers = append(swaggers, s)
 		}
-		if s, err := users.GetSwagger(); err == nil {
+		if s, err := users.GetSpec(); err == nil {
 			swaggers = append(swaggers, s)
 		}
 		routes.PrintRoutes(router, swaggers)
@@ -121,36 +119,30 @@ func main() {
 	}
 }
 
-func connectToDatabase(cfg *config.Config) (*pgxpool.Pool, error) {
-	// Create context with timeout for database connection
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	var dsn string
-	if !cfg.PGLocal {
-		dsn = fmt.Sprintf(
-			"host=%s port=%s dbname=%s user=%s sslmode=%s sslcert=%s sslkey=%s sslrootcert=%s password=%s",
-			cfg.PGHost, cfg.PGPort, cfg.PGDB, cfg.PGUser, cfg.PGSSLMode,
-			cfg.PGTLSCert, cfg.PGTLSKey, cfg.PGSSLRootCert, cfg.PGPassword,
-		)
-	} else {
-		// Local development
-		dsn = fmt.Sprintf(
-			"host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
-			cfg.PGHost, cfg.PGPort, cfg.PGDB, cfg.PGUser, cfg.PGPassword, cfg.PGSSLMode,
-		)
-	}
-
-	// Parse config to validate DSN format, then create pool with context timeout
-	config, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse database configuration: %w", err)
-	}
-
-	// Attach OTel tracer so each query/batch produces a span (no-op if no
-	// global tracer provider was set by tracing.Init).
-	config.ConnConfig.Tracer = otelpgx.NewTracer()
-
-	// Create pool with timeout context
-	return pgxpool.NewWithConfig(ctx, config)
-}
+// connectToDatabase is kept for reference when re-enabling the DB.
+// func connectToDatabase(cfg *config.Config) (*pgxpool.Pool, error) {
+// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// 	defer cancel()
+//
+// 	var dsn string
+// 	if !cfg.PGLocal {
+// 		dsn = fmt.Sprintf(
+// 			"host=%s port=%s dbname=%s user=%s sslmode=%s sslcert=%s sslkey=%s sslrootcert=%s password=%s",
+// 			cfg.PGHost, cfg.PGPort, cfg.PGDB, cfg.PGUser, cfg.PGSSLMode,
+// 			cfg.PGTLSCert, cfg.PGTLSKey, cfg.PGSSLRootCert, cfg.PGPassword,
+// 		)
+// 	} else {
+// 		dsn = fmt.Sprintf(
+// 			"host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
+// 			cfg.PGHost, cfg.PGPort, cfg.PGDB, cfg.PGUser, cfg.PGPassword, cfg.PGSSLMode,
+// 		)
+// 	}
+//
+// 	config, err := pgxpool.ParseConfig(dsn)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to parse database configuration: %w", err)
+// 	}
+//
+// 	config.ConnConfig.Tracer = otelpgx.NewTracer()
+// 	return pgxpool.NewWithConfig(ctx, config)
+// }

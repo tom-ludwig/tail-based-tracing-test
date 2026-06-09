@@ -32,7 +32,7 @@ func NewUserHandler(queries *repository.Queries) *UserHandler {
 }
 
 func (u *UserHandler) GetUser(ctx context.Context, request users.GetUserRequestObject) (users.GetUserResponseObject, error) {
-	ctx, span := tracer.Start(ctx, "handler.GetUser")
+	_, span := tracer.Start(ctx, "handler.GetUser")
 	defer span.End()
 
 	userUUID, err := uuid.Parse(request.Params.UserId)
@@ -69,7 +69,7 @@ func (u *UserHandler) GetUser(ctx context.Context, request users.GetUserRequestO
 }
 
 func (u *UserHandler) CreateUser(ctx context.Context, request users.CreateUserRequestObject) (users.CreateUserResponseObject, error) {
-	ctx, span := tracer.Start(ctx, "handler.CreateUser")
+	_, span := tracer.Start(ctx, "handler.CreateUser")
 	defer span.End()
 
 	// newUser, err := u.Queries.CreateUser(ctx, repository.CreateUserParams{
@@ -105,7 +105,7 @@ func (u *UserHandler) CreateUser(ctx context.Context, request users.CreateUserRe
 }
 
 func (u *UserHandler) GetUsers(ctx context.Context, request users.GetUsersRequestObject) (users.GetUsersResponseObject, error) {
-	ctx, span := tracer.Start(ctx, "handler.GetUsers")
+	_, span := tracer.Start(ctx, "handler.GetUsers")
 	defer span.End()
 
 	// page := int32(1)

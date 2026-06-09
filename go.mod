@@ -3,7 +3,6 @@ module com.tom-ludwig/go-server-template
 go 1.26.0
 
 require (
-	github.com/exaring/otelpgx v0.11.1
 	github.com/fatih/color v1.19.0
 	github.com/getkin/kin-openapi v0.138.0
 	github.com/go-chi/chi/v5 v5.2.5

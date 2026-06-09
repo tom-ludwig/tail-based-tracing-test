@@ -34,7 +34,7 @@ func (s *HealthHandler) GetLivez(_ context.Context, _ health.GetLivezRequestObje
 }
 
 // GetReadyz implements health.StrictServerInterface.
-func (s *HealthHandler) GetReadyz(ctx context.Context, _ health.GetReadyzRequestObject) (health.GetReadyzResponseObject, error) {
+func (s *HealthHandler) GetReadyz(_ context.Context, _ health.GetReadyzRequestObject) (health.GetReadyzResponseObject, error) {
 	// DB disabled
 	// _, err := s.queries.Ping(ctx)
 	// if err != nil {

@@ -34,8 +34,8 @@ func (w *errorCaptureWriter) Write(b []byte) (int, error) {
 		w.wroteHeader = true
 	}
 	// Cap body capture so a giant response can't bloat span attributes.
-	const max = 4096
-	if remaining := max - w.buf.Len(); remaining > 0 {
+	const bodyCapBytes = 4096
+	if remaining := bodyCapBytes - w.buf.Len(); remaining > 0 {
 		if len(b) <= remaining {
 			w.buf.Write(b)
 		} else {

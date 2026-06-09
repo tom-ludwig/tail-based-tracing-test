@@ -8,8 +8,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/riandyrn/otelchi"
 	oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
+	"github.com/riandyrn/otelchi"
 
 	"com.tom-ludwig/go-server-template/internal/api/health"
 	"com.tom-ludwig/go-server-template/internal/api/users"
@@ -77,7 +77,7 @@ func mountHealthAPI(r chi.Router, queries *repository.Queries) {
 	healthHandler := handler.NewHealthHandler(queries)
 	strictHealthServer := health.NewStrictHandler(healthHandler, nil)
 
-	healthSwagger, err := health.GetSwagger()
+	healthSwagger, err := health.GetSpec()
 	if err != nil {
 		slog.Error("Failed to load health swagger spec", "error", err)
 		os.Exit(1)
@@ -94,7 +94,7 @@ func mountUsersAPI(r chi.Router, queries *repository.Queries, jwtAuth *middlewar
 	userHandler := handler.NewUserHandler(queries)
 	strictUsersServer := users.NewStrictHandler(userHandler, nil)
 
-	usersSwagger, err := users.GetSwagger()
+	usersSwagger, err := users.GetSpec()
 	if err != nil {
 		slog.Error("Failed to load users swagger spec", "error", err)
 		os.Exit(1)
