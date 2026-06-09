@@ -2,6 +2,9 @@
 
 A test for tail based tracing.
 This go service was just to test if our tail based tracing with multiple Otel-Collector works correctly, along with the traces to logs configuration.
+
+The collector setup in [`otel-collector-config/`](./otel-collector-config/) is two-tiered: apps send OTLP to **`otel-lb`**, which hashes by traceID and forwards to **`otel-tail-sampler`** (StatefulSet, headless service) so all spans of a trace land on the same pod for tail sampling, then export to VictoriaTraces.
+
 Use the following endpoints to test if the collector is configured correctly.
 
 - `/success` endpoint will just return a 200; only the configured sample amount (e.g. 1% => 1 out of 100 request) should be recorded
