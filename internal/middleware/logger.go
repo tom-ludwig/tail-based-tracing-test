@@ -7,7 +7,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
+
+var tracer = otel.Tracer("middleware")
 
 // ANSI color codes
 const (
@@ -83,6 +87,10 @@ func methodColor(method string) string {
 func RequestLogger(debugMode bool) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, span := tracer.Start(r.Context(), "middleware.RequestLogger")
+			defer span.End()
+			r = r.WithContext(ctx) // attach context to request
+
 			start := time.Now()
 
 			wrapped := wrapResponseWriter(w)
@@ -90,6 +98,10 @@ func RequestLogger(debugMode bool) func(next http.Handler) http.Handler {
 
 			duration := time.Since(start)
 			status := wrapped.Status()
+
+			span.SetAttributes(
+				attribute.Int("http.status_code", wrapped.status),
+			)
 
 			if debugMode {
 				// Human-readable colored output for local development

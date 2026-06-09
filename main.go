@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/exaring/otelpgx"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -15,10 +16,14 @@ import (
 	"com.tom-ludwig/go-server-template/internal/api/health"
 	"com.tom-ludwig/go-server-template/internal/api/users"
 	"com.tom-ludwig/go-server-template/internal/config"
+	"com.tom-ludwig/go-server-template/internal/logging"
 	"com.tom-ludwig/go-server-template/internal/middleware"
 	"com.tom-ludwig/go-server-template/internal/repository"
 	"com.tom-ludwig/go-server-template/internal/routes"
+	"com.tom-ludwig/go-server-template/internal/tracing"
 )
+
+const serviceName = "go-server-template"
 
 func main() {
 	err := godotenv.Load()
@@ -32,22 +37,41 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 
-	// Setup Logger with configured log level
+	// Setup Logger with configured log level, wrapped to inject trace_id/span_id
+	// from the active OTel span on every log line.
 	opts := &slog.HandlerOptions{
 		Level: cfg.LogLevel,
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	logger := slog.New(logging.NewTraceHandler(slog.NewJSONHandler(os.Stdout, opts)))
 	slog.SetDefault(logger)
 
-	dbpool, err := connectToDatabase(cfg)
+	// Initialize tracing. No-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset.
+	shutdownTracer, err := tracing.Init(context.Background(), serviceName, "dev")
 	if err != nil {
-		slog.Error("Failed to connect to database", "error", err)
+		slog.Error("Failed to initialize tracing", "error", err)
 		os.Exit(1)
 	}
-	defer dbpool.Close()
-	slog.Info("Successfully connected to database")
+	if shutdownTracer != nil {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := shutdownTracer(ctx); err != nil {
+				slog.Error("Error shutting down tracer", "error", err)
+			}
+		}()
+		slog.Info("Tracing enabled", "service", serviceName, "endpoint", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+	}
 
-	queries := repository.New(dbpool)
+	// dbpool, err := connectToDatabase(cfg)
+	// if err != nil {
+	// 	slog.Error("Failed to connect to database", "error", err)
+	// 	os.Exit(1)
+	// }
+	// defer dbpool.Close()
+	// slog.Info("Successfully connected to database")
+	//
+	// queries := repository.New(dbpool)
+	var queries *repository.Queries // DB disabled
 
 	// Initialize JWT auth if OIDC is enabled
 	var jwtAuth *middleware.JWTAuth
@@ -122,6 +146,10 @@ func connectToDatabase(cfg *config.Config) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse database configuration: %w", err)
 	}
+
+	// Attach OTel tracer so each query/batch produces a span (no-op if no
+	// global tracer provider was set by tracing.Init).
+	config.ConnConfig.Tracer = otelpgx.NewTracer()
 
 	// Create pool with timeout context
 	return pgxpool.NewWithConfig(ctx, config)

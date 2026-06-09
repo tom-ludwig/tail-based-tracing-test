@@ -35,13 +35,16 @@ func (s *HealthHandler) GetLivez(_ context.Context, _ health.GetLivezRequestObje
 
 // GetReadyz implements health.StrictServerInterface.
 func (s *HealthHandler) GetReadyz(ctx context.Context, _ health.GetReadyzRequestObject) (health.GetReadyzResponseObject, error) {
-	_, err := s.queries.Ping(ctx)
-	if err != nil {
-		return health.GetReadyz503JSONResponse{
-			FailedChecks:      []string{"Database not reachable."},
-			SuccessfullChecks: []string{},
-		}, nil
-	}
+	// DB disabled
+	// _, err := s.queries.Ping(ctx)
+	// if err != nil {
+	// 	span.RecordError(err)
+	// 	span.SetStatus(codes.Error, "database not reachable")
+	// 	return health.GetReadyz503JSONResponse{
+	// 		FailedChecks:      []string{"Database not reachable."},
+	// 		SuccessfullChecks: []string{},
+	// 	}, nil
+	// }
 
 	return health.GetReadyz200JSONResponse{
 		Status: "OK",

@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/riandyrn/otelchi"
 	oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
 
 	"com.tom-ludwig/go-server-template/internal/api/health"
@@ -20,6 +21,15 @@ import (
 
 func NewRouter(cfg *config.Config, queries *repository.Queries, jwtAuth *middleware.JWTAuth) chi.Router {
 	r := chi.NewRouter()
+
+	// Tracing: wrap every request in a server span. otelchi names spans
+	// after the matched chi route pattern (e.g. "/user/{user_id}").
+	r.Use(otelchi.Middleware("chi-api-service"))
+
+	// Record non-2xx responses (including those produced by middleware that
+	// runs before the handler, e.g. the oapi request validator) onto the
+	// active server span. Must come right after otelchi.
+	r.Use(middleware.TraceErrors)
 
 	// Core middleware (applied to all routes)
 	r.Use(chimiddleware.RequestID)
@@ -47,7 +57,19 @@ func NewRouter(cfg *config.Config, queries *repository.Queries, jwtAuth *middlew
 	// Mount Users API (protected with JWT auth if enabled)
 	mountUsersAPI(r, queries, jwtAuth)
 
+	// Mount tail-sampling test endpoints (no OpenAPI, no auth).
+	mountTraceTestAPI(r)
+
 	return r
+}
+
+// mountTraceTestAPI mounts /success, /failure, /latency for exercising
+// the OTel collector's tail-based sampling rules.
+func mountTraceTestAPI(r chi.Router) {
+	h := handler.NewTraceTestHandler()
+	r.Get("/success", h.Success)
+	r.Get("/failure", h.Failure)
+	r.Get("/latency", h.Latency)
 }
 
 // mountHealthAPI mounts health check endpoints

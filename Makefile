@@ -2,12 +2,12 @@
 -include .env
 export
 
-CONTAINER_CMD ?= podman
+CONTAINER_CMD ?= docker
 
 # Database connection defaults (can be overridden by .env file or environment)
 PG_HOST ?= localhost
 PG_PORT ?= 5432
-PG_DB ?= orbis
+PG_DB ?= app
 PG_USER ?= user
 PG_PASSWORD ?= password
 PG_SSLMODE ?= disable
