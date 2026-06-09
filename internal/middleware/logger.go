@@ -7,11 +7,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
-
-var tracer = otel.Tracer("middleware")
 
 // ANSI color codes
 const (
@@ -81,16 +79,13 @@ func methodColor(method string) string {
 	}
 }
 
-// RequestLogger returns a slog-based request logging middleware
-// In debug mode, it outputs colored human-readable logs
-// In production mode, it outputs structured JSON logs
+// RequestLogger returns a slog-based request logging middleware.
+// In debug mode, it outputs colored human-readable logs.
+// In production mode, it outputs structured JSON logs.
+// It annotates the active span (created by otelchi) rather than creating its own.
 func RequestLogger(debugMode bool) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx, span := tracer.Start(r.Context(), "middleware.RequestLogger")
-			defer span.End()
-			r = r.WithContext(ctx) // attach context to request
-
 			start := time.Now()
 
 			wrapped := wrapResponseWriter(w)
@@ -99,9 +94,9 @@ func RequestLogger(debugMode bool) func(next http.Handler) http.Handler {
 			duration := time.Since(start)
 			status := wrapped.Status()
 
-			span.SetAttributes(
-				attribute.Int("http.status_code", wrapped.status),
-			)
+			// Annotate the existing otelchi span instead of creating a child.
+			span := trace.SpanFromContext(r.Context())
+			span.SetAttributes(attribute.Int("http.status_code", wrapped.status))
 
 			if debugMode {
 				// Human-readable colored output for local development

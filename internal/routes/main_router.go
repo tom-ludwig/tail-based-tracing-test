@@ -2,6 +2,7 @@ package routes
 
 import (
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -22,9 +23,11 @@ import (
 func NewRouter(cfg *config.Config, queries *repository.Queries, jwtAuth *middleware.JWTAuth) chi.Router {
 	r := chi.NewRouter()
 
-	// Tracing: wrap every request in a server span. otelchi names spans
-	// after the matched chi route pattern (e.g. "/user/{user_id}").
-	r.Use(otelchi.Middleware("chi-api-service"))
+	// Tracing: wrap every request in a server span. Health probe paths are
+	// filtered out so they don't pollute the trace backend.
+	r.Use(otelchi.Middleware("chi-api-service", otelchi.WithFilter(func(r *http.Request) bool {
+		return r.URL.Path != "/healthz" && r.URL.Path != "/livez" && r.URL.Path != "/readyz"
+	})))
 
 	// Record non-2xx responses (including those produced by middleware that
 	// runs before the handler, e.g. the oapi request validator) onto the
