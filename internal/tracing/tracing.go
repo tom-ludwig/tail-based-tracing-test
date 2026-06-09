@@ -69,7 +69,6 @@ func Init(ctx context.Context, serviceName, serviceVersion string) (ShutdownFunc
 
 	res, err := resource.New(ctx,
 		resource.WithFromEnv(),
-		resource.WithProcess(),
 		resource.WithTelemetrySDK(),
 		resource.WithAttributes(
 			semconv.ServiceName(serviceName),
