@@ -1,0 +1,146 @@
+# Tail-sampling collectors. Receive OTLP from otel-lb, run tail_sampling,
+# export to VictoriaTraces.
+#
+# Deployed as a StatefulSet so pod identity (and therefore the LB's k8s
+# resolver hash ring) stays stable across rolling updates — fewer fragmented
+# traces during deploys.
+#
+# The chart's Service is set headless (clusterIP: None) so otel-lb can
+# resolve per-pod IPs via DNS.
+#
+# Install:
+#   helm upgrade --install otel-tail-sampler opentelemetry-helm/opentelemetry-collector \
+#     --namespace observability --create-namespace \
+#     -f otel-tail-sampler.yaml
+
+mode: statefulset
+replicaCount: 2
+fullnameOverride: otel-tail-sampler
+
+image:
+  repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s
+command:
+  name: otelcol-k8s
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+
+# Headless service so otel-lb's k8s resolver gets per-pod endpoints.
+service:
+  clusterIP: None
+
+# Smooth rollouts: one pod at a time so the LB's hash ring shifts gradually.
+rollout:
+  strategy: RollingUpdate
+  rollingUpdate:
+    partition: 0
+statefulset:
+  podManagementPolicy: OrderedReady
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+  metrics:
+    enabled: true
+
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: metrics
+
+config:
+  exporters:
+    otlphttp/vtsingle:
+      endpoint: "http://vtsingle-vt-single.monitoring.svc.cluster.local:10428/insert/opentelemetry"
+
+  extensions:
+    health_check:
+      endpoint: 0.0.0.0:13133
+
+  processors:
+    resource/cluster:
+      attributes:
+        - key: cluster.name
+          value: "lucenhq-prod-eu01"
+          action: upsert
+
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+
+    tail_sampling:
+      decision_wait: 15s # Increased slightly to ensure slow traces finish before evaluation
+      num_traces: 10000
+      expected_new_traces_per_sec: 10 # TODO: ADJUST after testing
+      policies:
+        - name: keep-errors
+          type: status_code
+          status_code:
+            status_codes: [ERROR]
+
+        - name: keep-slow-traces
+          type: latency
+          latency:
+            threshold_ms: 1000
+
+        - name: sample-baseline
+          type: probabilistic
+          probabilistic:
+            sampling_percentage: 50
+    batch:
+      send_batch_size: 8192
+      timeout: 200ms
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  service:
+    telemetry:
+      logs:
+        level: WARN
+        encoding: json
+
+    extensions:
+      - health_check
+    pipelines:
+      traces:
+        receivers:
+          - otlp
+        processors:
+          - memory_limiter
+          - resource/cluster
+          - tail_sampling # Must be before batch processor
+          - batch
+        exporters:
+          - otlphttp/vtsingle
+
+presets:
+  resourceDetection:
+    enabled: true
+    env:
+      enabled: true
+    k8snode:
+      enabled: true
+
+networkPolicy:
+  enabled: true

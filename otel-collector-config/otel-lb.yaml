@@ -1,0 +1,122 @@
+# Trace load balancer — the entry point for app OTLP traffic.
+# Sole job: receive OTLP, hash by traceID, forward to the correct
+# otel-tail-sampler pod so all spans of a trace land on the same
+# tail_sampling instance.
+#
+# Apps point at the Service this release creates:
+#   otel-lb.observability.svc.cluster.local:4317
+#
+# No enrichment, no sampling — keep this tier as thin as possible.
+#
+# Install:
+#   helm upgrade --install otel-lb opentelemetry-helm/opentelemetry-collector \
+#     --namespace observability --create-namespace \
+#     -f otel-lb.yaml
+
+mode: deployment # daemonset would lower per-hop network cost but multiplies pods × node count; revisit if traffic grows.
+replicaCount: 2
+fullnameOverride: otel-lb
+
+image:
+  repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s
+command:
+  name: otelcol-k8s
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+  metrics:
+    enabled: true
+
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: metrics
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# The k8s resolver in the loadbalancing exporter watches Endpoints/EndpointSlices
+# of the otel-tail-sampler headless service. That requires API access.
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["endpoints"]
+      verbs: ["list", "watch", "get"]
+    - apiGroups: ["discovery.k8s.io"]
+      resources: ["endpointslices"]
+      verbs: ["list", "watch", "get"]
+
+config:
+  extensions:
+    health_check:
+      endpoint: 0.0.0.0:13133
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  processors:
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    # Small batches keep latency low; otel-tail-sampler will re-batch before export.
+    batch:
+      send_batch_size: 1024
+      timeout: 100ms
+
+  exporters:
+    loadbalancing:
+      routing_key: traceID
+      protocol:
+        otlp:
+          timeout: 1s
+          tls:
+            insecure: true
+      resolver:
+        k8s:
+          # Headless service of the otel-tail-sampler release; resolves to per-pod IPs.
+          service: otel-tail-sampler.observability.svc.cluster.local
+          ports:
+            - 4317
+
+  service:
+    telemetry:
+      logs:
+        level: WARN
+        encoding: json
+    extensions:
+      - health_check
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [loadbalancing]
+
+# Edge tier does no enrichment — that runs once on otel-tail-sampler.
+presets:
+  resourceDetection:
+    enabled: false
+
+networkPolicy:
+  enabled: true
