@@ -1,4 +1,17 @@
-# Go-Server Template
+# Test Tail based Tracing
+
+A test for tail based tracing.
+This go service was just to test if our tail based tracing with multiple Otel-Collector works correctly, along with the traces to logs configuration.
+Use the following endpoints to test if the collector is configured correctly.
+
+- `/success` endpoint will just return a 200; only the configured sample amount (e.g. 1% => 1 out of 100 request) should be recorded
+- `/failure` endpoint will always return a 500, simulate a failure; 100% of failures should be recorded and stored
+- `/latency` endpoint will take ~1,5 seconds to respond with a 200; 100% of slow(>1s) request should be recorded
+
+This repository is based on the go-server-template. Note that much of this code is still bloat from the template. This example runs without an DB connection.
+The documentation below is from the template and was not changed.
+
+---
 
 A lightweight Go server template with OpenAPI, PostgreSQL, and database migrations using Chi router.
 
@@ -16,6 +29,7 @@ Tools which help designing an API (not sponsored or affiliated):
 - [Migrations](#migrations)
 - [DB Schema](#db-schema)
 - [API Spec](#api-spec)
+- [Tracing](#tracing)
 - [Renovate](#renovate)
 - [Get Started](#get-started)
 - [Deployment](#deployment)
@@ -37,6 +51,7 @@ Tools which help designing an API (not sponsored or affiliated):
 - **GolangCI-Lint:** Pre-configured linter for code quality
 - **Github Actions:** CI setup for linting and testing
 - **Renovate:** Automated dependency updates (requires GitHub App setup)
+- **OpenTelemetry Tracing:** OTLP/gRPC export of HTTP and PostgreSQL spans, configured for tail-based sampling at the collector
 
 ## Directory Structure
 
@@ -100,6 +115,7 @@ The Makefile automatically reads `.env` values for migrations and database comma
 This project uses **psqldef** for declarative schema migrations. The desired schema is defined in `migrations/schema.sql`.
 
 **Make commands:**
+
 - `make plan` - Preview schema changes (dry-run)
 - `make apply` - Apply schema changes to database
 - `make diff` - Compare `migrations/current-schema.sql` with `migrations/schema.sql`
@@ -164,6 +180,36 @@ func mountAdminAPI(r chi.Router, queries *repository.Queries) {
 }
 ```
 
+## Tracing
+
+The server emits OpenTelemetry traces via OTLP/gRPC. Two integrations are wired in:
+
+- **HTTP:** [`otelchi`](https://github.com/riandyrn/otelchi) creates a server span for every request, named after the matched chi route pattern.
+- **PostgreSQL:** [`otelpgx`](https://github.com/exaring/otelpgx) attaches a tracer to the `pgxpool` so each query and batch produces a child span.
+
+### Sampling philosophy
+
+The SDK is configured with `AlwaysSample()` so every span is exported. The actual keep/drop decision is delegated to the **tail-based sampling processor on the OpenTelemetry Collector**, which can inspect the full trace (status codes, latency, errors) before deciding what to retain. This is the recommended setup when you want error- or latency-driven sampling.
+
+### Configuration
+
+Tracing is enabled when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; otherwise the SDK is a no-op and the app runs without a collector. Standard OTel env vars are honored:
+
+| Variable                      | Description                                                   |
+| ----------------------------- | ------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector address, e.g. `otel-collector.observability:4317`.  |
+| `OTEL_EXPORTER_OTLP_INSECURE` | Set to `true` to disable TLS (in-cluster plaintext).          |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Comma-separated headers, e.g. `authorization=Bearer <token>`. |
+| `OTEL_SERVICE_NAME`           | Overrides the default `service.name` resource attribute.      |
+| `OTEL_RESOURCE_ATTRIBUTES`    | Extra resource attributes, e.g. `deployment.environment=dev`. |
+
+### Verifying
+
+1. Set `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_INSECURE=true` for plaintext collectors).
+2. Start the server — you should see `Tracing enabled` in the logs.
+3. Hit an endpoint, e.g. `curl localhost:8080/healthz`.
+4. Check the collector logs / your tracing backend for a span named after the route (e.g. `/healthz`) plus child PostgreSQL spans for any DB calls.
+
 ## Renovate
 
 Automated dependency updates via [Renovate](https://docs.renovatebot.com/). Requires a GitHub App:
@@ -219,15 +265,17 @@ helm install go-server-template ./charts/go-server -f my-values.yaml
 #### Prerequisites
 
 1. **Start a local Kubernetes cluster:**
+
    ```bash
    # For Kind
    kind create cluster
-   
+
    # Or for Minikube
    minikube start
    ```
 
 2. **Install CloudNativePG operator:**
+
    ```bash
    helm repo add cnpg https://cloudnative-pg.github.io/charts
    helm upgrade --install cnpg \
@@ -237,6 +285,7 @@ helm install go-server-template ./charts/go-server -f my-values.yaml
    ```
 
 3. **Create a PostgreSQL cluster:**
+
    ```bash
    cat <<EOF | kubectl apply -f -
    apiVersion: postgresql.cnpg.io/v1
@@ -255,12 +304,13 @@ helm install go-server-template ./charts/go-server -f my-values.yaml
    ```
 
 4. **Build and load the Docker image:**
+
    ```bash
    docker build -t go-server-template:latest .
-   
+
    # For Kind
    kind load docker-image go-server-template:latest
-   
+
    # For Minikube
    minikube image load go-server-template:latest
    ```
@@ -270,4 +320,3 @@ helm install go-server-template ./charts/go-server -f my-values.yaml
    helm install go-server-template ./charts/go-server \
      -f ./charts/go-server/values-unsecure-cnpg-example.yaml
    ```
-
