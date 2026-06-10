@@ -65,15 +65,25 @@ spec:
             - name: OIDC_ENABLED
               value: "false"
 
-            # OTel — point at your in-cluster collector
             - name: OTEL_SERVICE_NAME
               value: "tail-based-tracing-test"
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "otel-lb.observability.svc.cluster.local:4317"
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
               value: "grpc"
             - name: OTEL_EXPORTER_OTLP_INSECURE
               value: "true"
+
+            # Option A:  centralised load-balancer Service.
+            #   All pods send directly to otel-lb over the cluster network. 2 network hops
+            # - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            #   value: "otel-lb.observability.svc.cluster.local:4317"
+            #
+            # Option B (daemonset): send to the collector running on the same node.
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "$(NODE_IP):4317"
 
           livenessProbe:
             httpGet:
@@ -92,7 +102,6 @@ spec:
               cpu: 100m
               memory: 128Mi
             limits:
-              cpu: 500m
               memory: 256Mi
 ---
 apiVersion: v1
