@@ -1,0 +1,49 @@
+# helm install my-grafana grafana-community/grafana --version 12.4.4 --values grafana-values
+replicas: 1
+
+service:
+  enabled: true
+
+deploymentStrategy:
+  type: RollingUpdate
+
+persistence:
+  enabled: true # Enable sqlite; if size grows too much enable CNPG
+  type: pvc
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  finalizers:
+    - kubernetes.io/pvc-protection
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+grafana.ini:
+  log:
+    mode: console
+  log.console:
+    format: json
+  database:
+    wal: true
+
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Jaeger-VictoriaTraces
+        type: jaeger
+        uid: jaeger-vt
+        url: http://vtsingle-vt-single.monitoring.svc:10428/select/jaeger
+        access: proxy
+        jsonData:
+          nodeGraph:
+            enabled: true
