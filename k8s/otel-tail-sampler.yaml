@@ -24,10 +24,10 @@ command:
 
 resources:
   requests:
-    memory: "256Mi"
-    cpu: "100m"
-  limits:
     memory: "512Mi"
+    cpu: "500m"
+  limits:
+    memory: "1Gi"
 
 # Headless service so otel-lb's k8s resolver gets per-pod endpoints.
 service:
@@ -79,14 +79,14 @@ config:
           action: upsert
 
     memory_limiter:
-      check_interval: 5s
-      limit_percentage: 80
-      spike_limit_percentage: 25
+      check_interval: 1s
+      limit_percentage: 75
+      spike_limit_percentage: 20
 
     tail_sampling:
-      decision_wait: 15s # Increased slightly to ensure slow traces finish before evaluation
-      num_traces: 10000
-      expected_new_traces_per_sec: 100 # TODO: ADJUST after testing
+      decision_wait: 15s
+      num_traces: 150000
+      expected_new_traces_per_sec: 500
       policies:
         - name: keep-errors
           type: status_code
@@ -104,6 +104,7 @@ config:
             sampling_percentage: 1
     batch:
       send_batch_size: 8192
+      send_batch_max_size: 16384
       timeout: 200ms
 
   receivers:

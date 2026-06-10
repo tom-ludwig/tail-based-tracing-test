@@ -3,8 +3,23 @@
 # otel-tail-sampler pod so all spans of a trace land on the same
 # tail_sampling instance.
 #
-# Apps point at the Service this release creates:
-#   otel-lb.observability.svc.cluster.local:4317
+# Topology options
+# ────────────────
+# Option A — Deployment (current, default)
+#   Apps send to the ClusterIP Service:
+#     otel-lb.observability.svc.cluster.local:4317
+#   Two replicas provide redundancy; the loadbalancing exporter hashes
+#   by traceID so all spans for a trace reach the same tail-sampler pod.
+#
+# Option B — DaemonSet
+#   Switch `mode` to `daemonset` and remove `replicaCount`.
+#   Apps use the node IP instead of the Service (see test-deployment.yaml
+#   Option B comment for the required env-var change).
+#   Trade-off: eliminates one cross-node hop per span, but runs one
+#   collector pod per node — higher total resource footprint.
+#   When switching to daemonset also update the networkPolicy below to
+#   allow ingress from all pod CIDRs on port 4317 (node-local traffic
+#   bypasses the ClusterIP and arrives as host-network traffic).
 #
 # No enrichment, no sampling — keep this tier as thin as possible.
 #
@@ -13,8 +28,9 @@
 #     --namespace observability --create-namespace \
 #     -f otel-lb.yaml
 
-mode: deployment # daemonset would lower per-hop network cost but multiplies pods × node count; revisit if traffic grows.
-replicaCount: 2
+mode: daemonset
+# mode: deployment
+# replicaCount: 2
 fullnameOverride: otel-lb
 
 image:
@@ -24,10 +40,10 @@ command:
 
 resources:
   requests:
-    memory: "128Mi"
-    cpu: "100m"
-  limits:
     memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
 
 ports:
   jaeger-compact:
@@ -77,20 +93,20 @@ config:
 
   processors:
     memory_limiter:
-      check_interval: 5s
-      limit_percentage: 80
-      spike_limit_percentage: 25
-    # Small batches keep latency low; otel-tail-sampler will re-batch before export.
+      check_interval: 1s
+      limit_percentage: 75
+      spike_limit_percentage: 20
     batch:
-      send_batch_size: 1024
-      timeout: 100ms
+      send_batch_size: 2048
+      send_batch_max_size: 4096
+      timeout: 200ms
 
   exporters:
     loadbalancing:
       routing_key: traceID
       protocol:
         otlp:
-          timeout: 1s
+          timeout: 5s
           tls:
             insecure: true
       resolver:
