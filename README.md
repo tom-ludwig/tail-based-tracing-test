@@ -6,16 +6,19 @@ This go service was just to test if our tail based tracing with multiple Otel-Co
 <img width="489" height="284" alt="image" src="https://github.com/user-attachments/assets/db72fa6c-ee9c-4ed0-a5f6-fa894ab4b99d" />
 
 ## Go-Service
+
 Use the following endpoints to test if the collector is configured correctly.
 
 - `/success` endpoint will just return a 200; only the configured sample amount (e.g. 1% => 1 out of 100 request) should be recorded
 - `/failure` endpoint will always return a 500, simulate a failure; 100% of failures should be recorded and stored
 - `/latency` endpoint will take ~1,5 seconds to respond with a 200; 100% of slow(>1s) request should be recorded
+- `/heavy` endpoint returns 200 in ~120ms and produces a 11-span trace (auth, two DB reads, cache write, outbound HTTP with retry, policy evaluation, audit insert, queue enqueue) with semantic-convention attributes, useful for testing collector memory and span-attribute throughput
 
 This repository is based on the go-server-template. Note that much of this code is still bloat from the template. This example runs without an DB connection.
 The documentation below is from the template and was not changed.
 
 ## OTel Collector Config
+
 The collector setup in [`k8s/`](./k8s/) is two-tiered: apps send OTLP to **`otel-lb`**, which hashes by traceID and forwards to **`otel-tail-sampler`** (StatefulSet, headless service) so all spans of a trace land on the same pod for tail sampling, then export to VictoriaTraces.
 
 <img width="2864" height="1524" alt="image" src="https://github.com/user-attachments/assets/39454a80-19ac-448b-bf04-b0f638352f14" />
