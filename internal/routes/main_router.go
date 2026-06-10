@@ -73,6 +73,7 @@ func mountTraceTestAPI(r chi.Router) {
 	r.Get("/success", h.Success)
 	r.Get("/failure", h.Failure)
 	r.Get("/latency", h.Latency)
+	r.Get("/heavy", h.Heavy)
 }
 
 // mountHealthAPI mounts health check endpoints
