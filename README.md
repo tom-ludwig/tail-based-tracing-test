@@ -16,10 +16,19 @@ This repository is based on the go-server-template. Note that much of this code 
 The documentation below is from the template and was not changed.
 
 ## OTel Collector Config
-The collector setup in [`otel-collector-config/`](./otel-collector-config/) is two-tiered: apps send OTLP to **`otel-lb`**, which hashes by traceID and forwards to **`otel-tail-sampler`** (StatefulSet, headless service) so all spans of a trace land on the same pod for tail sampling, then export to VictoriaTraces.
+The collector setup in [`k8s/`](./k8s/) is two-tiered: apps send OTLP to **`otel-lb`**, which hashes by traceID and forwards to **`otel-tail-sampler`** (StatefulSet, headless service) so all spans of a trace land on the same pod for tail sampling, then export to VictoriaTraces.
 
 <img width="2864" height="1524" alt="image" src="https://github.com/user-attachments/assets/39454a80-19ac-448b-bf04-b0f638352f14" />
 <img width="3168" height="1364" alt="image" src="https://github.com/user-attachments/assets/4577c1e1-6c83-408b-8f26-c704ef97d0d8" />
+
+### Load test
+
+[`k8s/load-test.sh`](./k8s/load-test.sh) fires a shuffled, parallel mix of `/success`, `/latency`, and `/failure` requests so you can validate sampling policies and watch collector CPU/memory under load. Counts and concurrency are tunable via env vars; it prints a summary of (path, status, count) plus elapsed time.
+
+```bash
+./k8s/load-test.sh                                          # defaults
+URL=http://otel-test.example.com SUCCESS_N=5000 ./k8s/load-test.sh
+```
 
 ---
 
