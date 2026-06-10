@@ -11,8 +11,15 @@ Two-tier OTel collector setup. Apps send spans -> `otel-lb` -> `otel-tail-sample
 | `load-test-job.yaml`     | Same script as a Kubernetes Job + ConfigMap for in-cluster load testing.                                                                                                         |
 | `grafana-values.yaml`    | Helm values for Grafana to visualise traces.                                                                                                                                     |
 
+**Problem:**
 <img width="2864" height="1524" alt="image" src="https://github.com/user-attachments/assets/39454a80-19ac-448b-bf04-b0f638352f14" />
+
+**Solution with LB-Deployment:**
 <img width="3168" height="1364" alt="image" src="https://github.com/user-attachments/assets/4577c1e1-6c83-408b-8f26-c704ef97d0d8" />
+
+**Solution with LB-DaemonSet:**
+<img width="3524" height="2644" alt="image" src="https://github.com/user-attachments/assets/3228f6da-103c-492c-ac56-383c4a2db305" />
+
 
 ## Topology
 
