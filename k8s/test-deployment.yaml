@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tail-based-tracing-test
+  labels:
+    app: tail-based-tracing-test
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: tail-based-tracing-test
+  template:
+    metadata:
+      labels:
+        app: tail-based-tracing-test
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+        - name: tail-based-tracing-test
+          # image: ghcr.io/tom-ludwig/tail-based-tracing-test:latest
+          image: tom-ludwig/tail-based-tracing-test:latest
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          env:
+            # Server
+            - name: PORT
+              value: "8080"
+            - name: LOG_LEVEL
+              value: "INFO"
+
+            # DB disabled — dummy values satisfy config validation without connecting
+            - name: PG_LOCAL
+              value: "true"
+            - name: PG_HOST
+              value: "localhost"
+            - name: PG_PORT
+              value: "5432"
+            - name: PG_DB
+              value: "disabled"
+            - name: PG_USER
+              value: "disabled"
+            - name: PG_PASSWORD
+              value: "disabled"
+            - name: PG_SSLMODE
+              value: "disable"
+
+            # CORS
+            - name: CORS_ALLOWED_ORIGINS
+              value: "*"
+            - name: CORS_ALLOW_CREDENTIALS
+              value: "true"
+
+            # OIDC disabled
+            - name: OIDC_ENABLED
+              value: "false"
+
+            # OTel — point at your in-cluster collector
+            - name: OTEL_SERVICE_NAME
+              value: "tail-based-tracing-test"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "otel-lb.observability.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tail-based-tracing-test
+  labels:
+    app: tail-based-tracing-test
+spec:
+  selector:
+    app: tail-based-tracing-test
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
