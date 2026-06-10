@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fire a mix of /success, /latency, /failure requests against the test service
+# Fire a mix of /success, /latency, /failure, /heavy requests against the test service
 # to validate tail-sampling under load.
 #
 # Tunables (env vars):
@@ -7,6 +7,7 @@
 #   SUCCESS_N    number of /success requests                (default: 1000)
 #   LATENCY_N    number of /latency requests                (default: 20)
 #   FAILURE_N    number of /failure requests                (default: 20)
+#   HEAVY_N      number of /heavy requests                  (default: 100)
 #   CONCURRENCY  parallel in-flight requests                (default: 20)
 #
 # Usage:
@@ -19,14 +20,16 @@ URL="${URL:-http://localhost:8080}"
 SUCCESS_N="${SUCCESS_N:-10000}"
 LATENCY_N="${LATENCY_N:-5}"
 FAILURE_N="${FAILURE_N:-20}"
+HEAVY_N="${HEAVY_N:-100}"
 CONCURRENCY="${CONCURRENCY:-100}"
 
-TOTAL=$((SUCCESS_N + LATENCY_N + FAILURE_N))
+TOTAL=$((SUCCESS_N + LATENCY_N + FAILURE_N + HEAVY_N))
 
 echo "Target:        $URL"
 echo "Success:       $SUCCESS_N"
 echo "Latency:       $LATENCY_N"
 echo "Failure:       $FAILURE_N"
+echo "Heavy:         $HEAVY_N"
 echo "Total:         $TOTAL"
 echo "Concurrency:   $CONCURRENCY"
 echo
@@ -36,6 +39,7 @@ build_targets() {
   for ((i = 0; i < SUCCESS_N; i++)); do echo /success; done
   for ((i = 0; i < LATENCY_N; i++)); do echo /latency; done
   for ((i = 0; i < FAILURE_N; i++)); do echo /failure; done
+  for ((i = 0; i < HEAVY_N; i++)); do echo /heavy; done
 }
 
 # Each worker prints "<path> <http_code>" per request; we tally at the end.

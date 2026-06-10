@@ -11,14 +11,16 @@ data:
     SUCCESS_N="${SUCCESS_N:-10000}"
     LATENCY_N="${LATENCY_N:-5}"
     FAILURE_N="${FAILURE_N:-20}"
+    HEAVY_N="${HEAVY_N:-500}"
     CONCURRENCY="${CONCURRENCY:-100}"
 
-    TOTAL=$((SUCCESS_N + LATENCY_N + FAILURE_N))
+    TOTAL=$((SUCCESS_N + LATENCY_N + FAILURE_N + HEAVY_N))
 
     echo "Target:        $URL"
     echo "Success:       $SUCCESS_N"
     echo "Latency:       $LATENCY_N"
     echo "Failure:       $FAILURE_N"
+    echo "Heavy:         $HEAVY_N"
     echo "Total:         $TOTAL"
     echo "Concurrency:   $CONCURRENCY"
     echo
@@ -27,6 +29,7 @@ data:
       for ((i = 0; i < SUCCESS_N; i++)); do echo /success; done
       for ((i = 0; i < LATENCY_N; i++)); do echo /latency; done
       for ((i = 0; i < FAILURE_N; i++)); do echo /failure; done
+      for ((i = 0; i < HEAVY_N; i++)); do echo /heavy; done
     }
 
     hit() {
@@ -55,6 +58,7 @@ metadata:
   name: load-test
 spec:
   ttlSecondsAfterFinished: 600
+  parallelism: 3
   template:
     spec:
       restartPolicy: Never
@@ -71,13 +75,15 @@ spec:
             - name: URL
               value: "http://tail-based-tracing-test.default.svc.cluster.local:8080"
             - name: SUCCESS_N
-              value: "100000"
+              value: "100"
             - name: LATENCY_N
               value: "50"
             - name: FAILURE_N
               value: "200"
+            - name: HEAVY_N
+              value: "10000"
             - name: CONCURRENCY
-              value: "10"
+              value: "15"
           volumeMounts:
             - name: script
               mountPath: /scripts
