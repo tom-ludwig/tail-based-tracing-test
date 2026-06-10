@@ -86,7 +86,7 @@ config:
     tail_sampling:
       decision_wait: 15s # Increased slightly to ensure slow traces finish before evaluation
       num_traces: 10000
-      expected_new_traces_per_sec: 10 # TODO: ADJUST after testing
+      expected_new_traces_per_sec: 100 # TODO: ADJUST after testing
       policies:
         - name: keep-errors
           type: status_code
@@ -101,7 +101,7 @@ config:
         - name: sample-baseline
           type: probabilistic
           probabilistic:
-            sampling_percentage: 50
+            sampling_percentage: 1
     batch:
       send_batch_size: 8192
       timeout: 200ms
