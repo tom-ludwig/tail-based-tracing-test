@@ -1,0 +1,138 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-lb
+  namespace: observability
+spec:
+  mode: daemonset
+  # Use service with internalTrafficPolicy
+  # hostNetwork: true
+  # dnsPolicy: ClusterFirstWithHostNet
+
+  # Image matching your values.yaml
+  image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s
+
+  # Container resources
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      memory: "512Mi"
+
+  # Expose only the ports you need
+  # ports:
+  #   - name: otlp-grpc
+  #     protocol: TCP
+  #     containerPort: 4317
+  #   - name: otlp-http
+  #     protocol: TCP
+  #     containerPort: 4318
+  #   - name: metrics
+  #     protocol: TCP
+  #     containerPort: 8888
+  #   - name: health
+  #     protocol: TCP
+  #     containerPort: 13133
+
+  # service:
+  #   type: ClusterIP
+
+  # Create a ServiceMonitor that scrapes the metrics port
+  observability:
+    metrics:
+      enableMetrics: true
+
+  # PDB to keep at least one pod available during disruptions
+  podDisruptionBudget:
+    minAvailable: 1
+
+  # Generate a default NetworkPolicy (if your operator version supports it)
+  networkPolicy:
+    enabled: true
+
+  serviceAccount: otel-lb
+
+  config:
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 75
+        spike_limit_percentage: 20
+      batch:
+        send_batch_size: 2048
+        send_batch_max_size: 4096
+        timeout: 200ms
+
+    exporters:
+      load_balancing:
+        routing_key: traceID
+        protocol:
+          otlp:
+            timeout: 5s
+            tls:
+              insecure: true
+        resolver:
+          k8s:
+            # Headless service of the otel-tail-sampler release; resolves to per-pod IPs.
+            service: otel-tail-sampler-collector-headless.observability.svc.cluster.local
+            ports:
+              - 4317
+
+    service:
+      telemetry:
+        logs:
+          level: WARN
+          encoding: json
+      extensions:
+        - health_check
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [load_balancing]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-lb
+  namespace: observability
+---
+#TODO: Check if this is really needed!
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-lb-endpoints-watcher
+rules:
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-lb-endpoints-watcher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-lb-endpoints-watcher
+subjects:
+  - kind: ServiceAccount
+    name: otel-lb
+    namespace: observability
+---
