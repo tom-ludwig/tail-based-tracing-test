@@ -1,0 +1,117 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-tail-sampler
+  namespace: observability
+spec:
+  mode: statefulset
+  replicas: 2
+  image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s:latest
+
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+
+  podManagementPolicy: OrderedReady
+
+  podDisruptionBudget:
+    minAvailable: 1
+
+  observability:
+    metrics:
+      enableMetrics: true
+
+  # DOESN"T WORK: " Enables k8s.* and host.* attributes via the operator's preset
+  # env:
+  #   - name: OTEL_RESOURCE_ATTRIBUTES_NODE_NAME
+  #     valueFrom:
+  #       fieldRef:
+  #         fieldPath: spec.nodeName
+
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      protocol: TCP
+
+  config:
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      # resourcedetection:
+      #   detectors: [env, k8snode]
+      #   timeout: 2s
+      #   override: false
+
+      resource/cluster:
+        attributes:
+          - key: cluster.name
+            value: "lucenhq-prod-eu01"
+            action: upsert
+
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 75
+        spike_limit_percentage: 20
+
+      tail_sampling:
+        decision_wait: 15s
+        num_traces: 2500
+        expected_new_traces_per_sec: 500
+        policies:
+          - name: keep-errors
+            type: status_code
+            status_code:
+              status_codes: [ERROR]
+          - name: keep-slow-traces
+            type: latency
+            latency:
+              threshold_ms: 1000
+          - name: sample-baseline
+            type: probabilistic
+            probabilistic:
+              sampling_percentage: 1
+
+      batch:
+        send_batch_size: 8192
+        send_batch_max_size: 16384
+        timeout: 200ms
+
+    exporters:
+      otlphttp/vtsingle:
+        endpoint: "http://vtsingle-vt-single.monitoring.svc.cluster.local:10428/insert/opentelemetry"
+
+    service:
+      telemetry:
+        logs:
+          level: WARN
+          encoding: json
+      extensions:
+        - health_check
+      pipelines:
+        traces:
+          receivers:
+            - otlp
+          processors:
+            - memory_limiter
+            # - resourcedetection
+            - resource/cluster
+            - tail_sampling # Must be before batch processor
+            - batch
+          exporters:
+            - otlphttp/vtsingle
