@@ -87,14 +87,58 @@ spec:
             probabilistic:
               sampling_percentage: 1
 
+      filter/server_spans:
+        error_mode: ignore
+        traces:
+          span:
+            - "kind != SPAN_KIND_SERVER"
+
       batch:
         send_batch_size: 8192
         send_batch_max_size: 16384
         timeout: 200ms
 
+    connectors:
+      forward/sampled: {}
+      forward/metrics: {}
+      span_metrics:
+        namespace: traces_span_metrics
+        histogram:
+          explicit:
+            buckets:
+              [
+                2ms,
+                4ms,
+                6ms,
+                8ms,
+                10ms,
+                50ms,
+                100ms,
+                200ms,
+                400ms,
+                800ms,
+                1s,
+                1400ms,
+                2s,
+                5s,
+                10s,
+                15s,
+              ]
+        dimensions:
+          - name: http.method
+          - name: http.status_code
+          - name: http.route
+          - name: rpc.method
+          - name: rpc.service
+        exemplars:
+          enabled: false # TODO: Enable with VMSingle
+        # metrics_flush_interval: 60s
+
     exporters:
-      otlphttp/vtsingle:
+      otlp_http/vtsingle:
         endpoint: "http://vtsingle-vt-single.monitoring.svc.cluster.local:10428/insert/opentelemetry"
+      otlp_http/vmsingle:
+        endpoint: "http://vmsingle-vm-single.monitoring.svc:8428/opentelemetry"
 
     service:
       telemetry:
@@ -104,14 +148,41 @@ spec:
       extensions:
         - health_check
       pipelines:
-        traces:
+        # Receives 100% of traces; forwards to both the tail-sampling pipeline
+        # and the spanmetrics connector (which sees 100% of spans).
+        traces/all:
           receivers:
             - otlp
           processors:
             - memory_limiter
             # - resourcedetection
             - resource/cluster
-            - tail_sampling # Must be before batch processor
+          exporters:
+            - forward/sampled
+            - forward/metrics
+
+        # Filters to server spans only before generating RED metrics.
+        traces/metrics:
+          receivers:
+            - forward/metrics
+          processors:
+            - filter/server_spans
+          exporters:
+            - span_metrics
+
+        # Applies tail-sampling and stores survivors in VictoriaTraces.
+        traces/sampled:
+          receivers:
+            - forward/sampled
+          processors:
+            - tail_sampling
             - batch
           exporters:
-            - otlphttp/vtsingle
+            - otlp_http/vtsingle
+
+        # Converts 100% of trace spans into RED metrics and ships to VictoriaMetrics.
+        metrics/spanmetrics:
+          receivers:
+            - span_metrics
+          exporters:
+            - otlp_http/vmsingle
